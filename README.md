@@ -30,6 +30,17 @@ To turn on AI notes (optional):
 ANTHROPIC_API_KEY=your-key npm start
 ```
 
+## Deploy to Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/JiveshKaushal/studify)
+
+1. Click the button and sign in to Render. Connect GitHub if Render asks.
+2. Render reads `render.yaml` and sets up a free web service called `studify`.
+3. `ANTHROPIC_API_KEY` is optional. Leave it empty to use the free offline summarizer.
+4. Click **Apply**. The app goes live at `https://studify-xxxx.onrender.com`, and every push to `main` redeploys it.
+
+Free Render services go to sleep after 15 minutes without visits, so the first visit after that takes about a minute.
+
 ## Tests
 
 ```bash
