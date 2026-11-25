@@ -15,9 +15,11 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "cheerio": "^1.2.0",
     "express": "^4.22.3",
     "katex": "^0.19.1",
-    "pdfjs-dist": "^6.5.438"
+    "pdfjs-dist": "^6.5.438",
+    "tesseract.js": "^7.0.0"
   }
 }

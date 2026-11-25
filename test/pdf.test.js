@@ -83,3 +83,50 @@ test('PDF import end to end: notes, preview pages and the /api/pdf endpoint', as
     server.close();
   }
 });
+
+test('scanned PDFs are detected and offered for OCR', async () => {
+  const fs = await import('node:fs');
+  const d = await extractFromPdf(fs.readFileSync(new URL('./fixtures/scanned.pdf', import.meta.url)));
+  assert.equal(d.scanned, true);
+  assert.equal(d.sections.length, 0);
+  const normal = await extractFromPdf(LECTURE);
+  assert.equal(normal.scanned, false);
+});
+
+test('OCR endpoint: bullets, running headers, wrapped bullets and title from the text', async () => {
+  const server = createApp().listen(0);
+  await new Promise(r => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const line = (text, size, y) => ({ text, size, y: -y });
+  try {
+    const body = {
+      url: 'https://ocw.mit.edu/courses/18-01/scan0001.pdf', title: 'scan0001', totalPages: 9,
+      pages: [
+        { number: 1, height: 2000, lines: [
+          line('Lecture 1 18.01 Fall 2006', 30, 120),
+          line('Lecture 1: Derivatives, Slope, Velocity,', 60, 300), line('and Rate of Change', 60, 370),
+          line('/ What is a derivative?', 44, 500),
+          line('e Important for any measurement in economics, science and', 30, 600),
+          line('finance, because it describes how fast things change', 30, 640),
+          line('® The derivative is the slope of the line tangent to the graph of a function.', 30, 700),
+          line('The derivative measures how fast the output of a function changes when its input changes.', 30, 760),
+          line('7', 30, 1900),
+        ] },
+      ],
+    };
+    const res = await fetch(base + '/api/notes/ocr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal(res.status, 200);
+    const n = await res.json();
+    assert.equal(n.title, 'Lecture 1: Derivatives, Slope, Velocity, and Rate of Change');
+    assert.equal(n.pdf.ocr, true);
+    assert.match(n.notice, /OCR/);
+    assert.match(n.notice, /Read 1 of 9 pages/);
+    const text = JSON.stringify(n);
+    assert.ok(text.includes('Important for any measurement in economics, science and finance, because it describes how fast things change.'), 'wrapped bullet joined, bullet mark removed');
+    assert.ok(!/18\.01 Fall 2006|® |"e Important/.test(text));
+    const bad = await fetch(base + '/api/notes/ocr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, url: 'https://example.com/x.pdf' }) });
+    assert.equal(bad.status, 400);
+  } finally {
+    server.close();
+  }
+});

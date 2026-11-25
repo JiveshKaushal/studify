@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { fetchJson, fetchText, fetchBuffer, robotsAllows } from './http.js';
-import { extractFromPdf, MAX_PDF_BYTES } from './pdf.js';
+import { extractFromPdf, pagesToDoc, MAX_PDF_BYTES } from './pdf.js';
 import { extractFromHtml, sectionsFromWikiText } from './extract.js';
 import { MathStore } from './math.js';
 
@@ -135,7 +135,8 @@ async function importPdf(url, site, titleHint) {
   const words = pdf.sections.reduce((a, s) => a + s.text.split(/\s+/).length, 0);
   const notices = [];
   if (pdf.pagesRead < pdf.pages) notices.push(`Only the first ${pdf.pagesRead} of ${pdf.pages} pages were read.`);
-  if (words < 120) notices.push(pdf.visualPages.length ? 'This PDF is mostly figures and formulas, so there is little text to summarise. See the page previews below.' : 'Studify could not find much text in this PDF. It may be a scanned document.');
+  if (pdf.scanned) notices.push('This PDF is scanned (pictures of pages), so it has no text to read directly. Use “Read with OCR” below to read the pages in your browser.');
+  else if (words < 120) notices.push(pdf.visualPages.length ? 'This PDF is mostly figures and formulas, so there is little text to summarise. See the page previews below.' : 'Studify could not find much text in this PDF. It may be a scanned document.');
   return {
     title: titleHint || pdf.title || fileName,
     sections: pdf.sections.length ? pdf.sections : [{ heading: 'Introduction', text: '' }],
@@ -145,7 +146,7 @@ async function importPdf(url, site, titleHint) {
     url,
     sourceName: site.name,
     license: site.license,
-    pdf: { url, pages: pdf.pages, visualPages: pdf.visualPages },
+    pdf: { url, pages: pdf.pages, visualPages: pdf.scanned ? [] : pdf.visualPages, scanned: pdf.scanned || undefined },
     notice: notices.join(' ') || undefined,
   };
 }
@@ -169,4 +170,43 @@ export async function importUrl(url) {
   if (!doc.sections.length) throw badRequest('Could not find readable text on that page. Try a lecture-notes or chapter page instead of an index page.');
   if (words < 150 && doc.related.length) doc.notice = 'This looks like an overview page with little text. Pick a page below (lecture notes, readings, chapters) for fuller notes.';
   return { ...doc, url, sourceName: site.name, license: site.license };
+}
+
+// Notes from text that the browser read off a scanned PDF with OCR.
+// pages: [{ number, lines: [{ text, size, y }] }] — size is the line height in pixels.
+export function documentFromOcr({ url, title, pages, totalPages }) {
+  const site = siteForUrl(url || '');
+  if (!site) throw badRequest('Unknown PDF source.');
+  if (!Array.isArray(pages) || !pages.length) throw badRequest('No OCR text was sent.');
+  if (pages.length > 60) throw badRequest('Too many pages.');
+  const clean = pages.map(pg => {
+    const height = Number(pg.height) || 0;
+    const lines = (Array.isArray(pg.lines) ? pg.lines : []).slice(0, 400)
+      .map(l => ({ text: cleanOcrLine(String(l.text || '')), size: Math.max(1, Math.min(500, Number(l.size) || 10)), y: Number(l.y) || 0 }))
+      .filter(l => l.text)
+      // OCR misreads running headers/footers a little differently on every page, so drop short lines at the very top or bottom.
+      .filter(l => !(height && l.text.length < 50 && (-l.y < height * 0.1 || -l.y > height * 0.93)));
+    return { number: Number(pg.number) || 0, drawing: 0, images: 1, lines };
+  });
+  const pdf = pagesToDoc(clean, { title: '', numPages: Number(totalPages) || clean.length, pageCount: clean.length });
+  // Scanners name files like "scan0001": prefer the largest heading in the text.
+  if (pdf.title && (!title || /^[\w-]+$/.test(String(title)) && /[_\d]/.test(String(title)))) title = pdf.title;
+  const read = clean.length;
+  const notices = ['Text read with OCR, so expect some mistakes (especially in formulas).'];
+  if (totalPages > read) notices.push(`Read ${read} of ${totalPages} pages.`);
+  return {
+    title: String(title || pdf.title || 'Scanned PDF').slice(0, 200),
+    sections: pdf.sections.length ? pdf.sections : [{ heading: 'Introduction', text: '' }],
+    figures: [], math: [], related: [],
+    url, sourceName: site.name, license: site.license,
+    pdf: { url, pages: Number(totalPages) || read, visualPages: pdf.visualPages, ocr: true },
+    notice: notices.join(' '),
+  };
+}
+
+// OCR reads bullet dots as "e", "E", "®", "°" and similar: turn them back into bullets.
+function cleanOcrLine(t) {
+  return t.replace(/\s+/g, ' ').trim().slice(0, 500)
+    .replace(/^(?:[eEoO0®°©«»·•*]|\(\s*\)|\.)\s+(?=[A-Z("“])/, '• ')
+    .replace(/\s[|_]\s/g, ' ');
 }

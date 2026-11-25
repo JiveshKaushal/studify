@@ -7,6 +7,7 @@ Studify is a study planner and concept summarizer. It reads free, open-licensed 
 - **Search open sources:** Wikipedia, Simple English Wikipedia, Wikibooks and arXiv (paper abstracts), all through their public APIs.
 - **Import pages by link** from MIT OpenCourseWare, OpenStax, LibreTexts, OpenLearn, Wikiversity and the sites above. Studify checks each site's `robots.txt` first and refuses pages that bots are asked not to read. Pages from any other site are refused too.
 - **Lecture-note PDFs:** paste a PDF link, or an MIT OCW resource page that wraps a PDF, and Studify reads it. It finds headings from font sizes, skips the OCW cover page, running headers and page numbers, and builds notes from the text. Formulas in PDFs are just positioned characters and can't be turned back into LaTeX, so pages with figures or formulas are shown as page previews, drawn in your browser with pdf.js. PDFs up to 25 MB are supported, and the first 60 pages are read.
+- **Scanned PDFs (OCR):** when a PDF is just pictures of pages, Studify says so and offers **Read with OCR**. The OCR runs in your browser with tesseract.js, so the server does no heavy work and nothing goes to an outside OCR service. The engine, its WebAssembly core and the English language data are all served by the app. The text that comes back goes through the same heading and paragraph logic as normal PDFs, plus cleanup for common OCR mistakes: bullet dots read as "e" or "®", and running headers that are misread slightly differently on each page. You choose how many pages to read (up to 60). Expect roughly 5–15 seconds per page, depending on the device, and some mistakes in formulas.
 - **Course and book navigation:** importing an MIT OCW course page lists its sub-pages (syllabus, lecture notes and so on), and you can make notes from any of them in one click.
 - **Simplified notes** for every page: a one-line summary, key ideas, bullet points per section, key definitions, key terms and flashcards. Every note links back to its source and names its license.
 - **Formulas:** maths and science formulas are kept exactly as the source writes them and shown properly, not flattened into text like `a2+b2=c2`. Each one sits on a formula card with the sentence that explains it and the section it came from. Wikipedia and LibreTexts formulas render as LaTeX with KaTeX (bundled with the app, no CDN). OpenStax formulas render as MathML, which is cleaned to an allowlist of maths tags first, so nothing unsafe gets into the page.
@@ -63,6 +64,7 @@ The tests stub every outside website, so they run offline.
 | GET | `/api/search` | `?source=wikipedia\|simplewiki\|wikibooks\|arxiv&q=topic` |
 | POST | `/api/notes` | `{ source, id }` or `{ source: "url", url }`, plus `detail: brief\|normal\|detailed` and `mode: auto\|offline` |
 | POST | `/api/plan` | `{ topics: [], startDate, examDate, minutesPerDay, learnMinutes }` |
+| POST | `/api/notes/ocr` | `{ url, title, totalPages, pages: [{ number, height, lines: [{ text, size, y }] }] }`: notes from text the browser read with OCR |
 | GET | `/api/pdf` | `?url=` a PDF on an allowed site (used for page previews) |
 | GET | `/api/sources`, `/api/status` | |
 
@@ -78,7 +80,7 @@ src/math.js        Formula extraction, MathML cleaning, LaTeX placeholders
 src/summarize.js   Offline summarizer and simplifier, Markdown export
 src/ai.js          Optional Claude-written notes
 src/planner.js     Spaced-repetition study planner
-public/            Frontend (plain HTML, CSS and JS); visuals.js draws formulas and the concept map
+public/            Frontend (plain HTML, CSS and JS); visuals.js draws formulas, the concept map and PDF previews; ocr.js runs OCR
 test/              node:test tests
 ```
 

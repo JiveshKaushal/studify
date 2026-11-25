@@ -3,6 +3,7 @@
 // pages that hold formulas or figures are listed so the browser can show them as page previews.
 import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
+const IMAGE_OPS = new Set(['paintImageXObject', 'paintInlineImageXObject', 'paintImageMaskXObject', 'paintImageXObjectRepeat'].map(k => OPS[k]).filter(v => v !== undefined));
 const DRAW_OPS = new Set(['paintImageXObject', 'paintInlineImageXObject', 'paintImageMaskXObject', 'constructPath', 'stroke', 'fill', 'eoFill', 'fillStroke', 'closeStroke'].map(k => OPS[k]).filter(v => v !== undefined));
 
 export const MAX_PDF_BYTES = 25 * 1024 * 1024;
@@ -56,8 +57,9 @@ async function readPages(buffer) {
       const ops = await page.getOperatorList().catch(() => null);
       // Count drawing and image operations: a page full of them is usually a figure or a graph.
       let drawing = 0;
-      if (ops) for (const fn of ops.fnArray) if (DRAW_OPS.has(fn)) drawing++;
-      pages.push({ number: p, lines: toLines(tc.items), drawing });
+      let images = 0;
+      if (ops) for (const fn of ops.fnArray) { if (DRAW_OPS.has(fn)) drawing++; if (IMAGE_OPS.has(fn)) images++; }
+      pages.push({ number: p, lines: toLines(tc.items), drawing, images });
       page.cleanup();
     }
     return { pages, numPages: pdf.numPages, pageCount, title: (meta?.info?.Title || '').trim() };
@@ -66,8 +68,23 @@ async function readPages(buffer) {
   }
 }
 
+// A scanned PDF is pictures of pages: most pages hold an image and (almost) no text.
+export function looksScanned(pages) {
+  const content = pages.filter(pg => !isCoverPage(pg.lines.map(l => l.text).join(' ')));
+  if (!content.length) return false;
+  const imageOnly = content.filter(pg => pg.images > 0 && pg.lines.reduce((a, l) => a + l.text.length, 0) < 80);
+  return imageOnly.length >= Math.max(1, content.length * 0.6);
+}
+
 export async function extractFromPdf(buffer) {
   const { pages, numPages, pageCount, title } = await readPages(buffer);
+  const doc = pagesToDoc(pages, { title, numPages, pageCount });
+  doc.scanned = looksScanned(pages);
+  return doc;
+}
+
+// Turns lines ({ text, size, y }) grouped by page into sections. Used for PDF text and for OCR results.
+export function pagesToDoc(pages, { title = '', numPages = pages.length, pageCount = pages.length } = {}) {
 
   // Running headers/footers repeat on most pages; page numbers are bare digits.
   const repeats = new Map();
@@ -81,19 +98,30 @@ export async function extractFromPdf(buffer) {
   // Title: the largest text on the first content pages (joined if it wraps onto two lines).
   let bigTitle = '';
   const firstPages = pages.filter(pg => !isCoverPage(pg.lines.map(l => l.text).join(' '))).slice(0, 2);
-  const candidates = firstPages.flatMap(pg => pg.lines.filter(l => !boiler(l.text) && /[A-Za-z]{3}/.test(l.text)));
+  const candidates = firstPages.flatMap(pg => pg.lines.filter(l => !boiler(l.text) && /[A-Za-z]{3}/.test(l.text)).map(l => ({ ...l, page: pg.number })));
   const top = Math.max(0, ...candidates.map(l => l.size));
   if (top >= body * 1.3) {
-    const big = candidates.filter(l => l.size === top);
-    bigTitle = big.slice(0, 3).map(l => l.text).join(' ').replace(/\s+/g, ' ').trim();
-    if (bigTitle.length > 120 || big.length > 3) bigTitle = big[0].text;
+    // The first line in the largest size, plus the lines right below it if the title wraps (OCR heights vary ~10%).
+    const big = l => l.size >= top * 0.9;
+    const start = candidates.findIndex(big);
+    const parts = [candidates[start]];
+    for (let i = start + 1; i < candidates.length && parts.length < 3; i++) {
+      const prev = parts[parts.length - 1], l = candidates[i];
+      if (!big(l) || l.page !== prev.page || Math.abs(prev.y - l.y) > prev.size * 2) break;
+      parts.push(l);
+    }
+    bigTitle = parts.map(l => l.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 140);
   }
 
   const sections = [];
   const visualPages = [];
   let current = { heading: 'Introduction', text: [] };
   let para = '';
-  const flush = () => { if (para.trim()) current.text.push(para.trim()); para = ''; };
+  const flush = () => {
+    const t = para.trim();
+    if (t) current.text.push(/[.!?:]$/.test(t) ? t : t + '.');
+    para = '';
+  };
 
   for (const pg of pages) {
     const pageText = pg.lines.map(l => l.text).join(' ');
@@ -115,15 +143,13 @@ export async function extractFromPdf(buffer) {
         if (current.text.length) sections.push(current);
         // "Example 1. f (x) =" -> "Example 1": drop formula pieces from headings.
         const heading = t.replace(/^[A-Z0-9]{1,3}[.)]\s+(?=[A-Z])/, '').replace(/[.:]?\s+[^A-Za-z]*\b[a-z]?\s*\(?[a-z]\)?\s*=.*$/, '').replace(/[\s:=]+$/, '');
-        current = { heading: heading || t, text: [] };
+        current = { heading: (heading || t).replace(/^[^A-Za-z0-9(]+/, ''), text: [] };
         continue;
       }
       if (/^[•●▪◦∗*–-]\s*/.test(t)) {
-        // Bullet: its own sentence.
+        // Bullet: starts its own sentence; a bullet that wraps continues on the next lines.
         flush();
         para = t.replace(/^[•●▪◦∗*–-]\s*/, '');
-        if (!/[.!?:]$/.test(para)) para += '.';
-        flush();
         continue;
       }
       // Lines with few letters are usually pieces of formulas or graph labels.

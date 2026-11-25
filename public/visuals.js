@@ -123,7 +123,7 @@ export function conceptMap(n) {
 
 // ---------- PDF page previews ----------
 let pdfjsPromise = null;
-function loadPdfJs() {
+export function loadPdfJs() {
   pdfjsPromise ||= import('/vendor/pdfjs/pdf.min.mjs').then(m => {
     m.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
     return m;

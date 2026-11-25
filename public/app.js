@@ -1,4 +1,5 @@
 import { typeset, whenMathReady, conceptMap, renderPdfPreviews } from './visuals.js';
+import { ocrPdf } from './ocr.js';
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -63,12 +64,7 @@ async function makeNotes(target, button) {
   $('#notes').innerHTML = `<div class="card"><span class="spinner"></span>Reading the source and writing notes…</div>`;
   try {
     const notes = await api('/api/notes', { ...target, detail: $('#detail').value, mode: $('#useAi').checked ? 'auto' : 'offline' });
-    currentNotes = { ...notes, id: crypto.randomUUID(), savedAt: null };
-    $('#notes').innerHTML = renderNotes(currentNotes, false);
-    bindNoteActions($('#notes'), currentNotes);
-    await whenMathReady();
-    typeset($('#notes'), currentNotes.mathml);
-    if (currentNotes.pdf) renderPdfPreviews($('#notes'), currentNotes.pdf);
+    await showNotes(notes);
     $('#notes').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     $('#notes').innerHTML = `<div class="card notice">${esc(err.message)}</div>`;
@@ -92,7 +88,46 @@ function formulasHtml(formulas) {
   </div>`).join('')}</div>`;
 }
 
+// "first 5", "first 10", … then "all N" (OCR reads at most 60 pages).
+function ocrPageOptions(total) {
+  const choices = [5, 10, 20, 40].filter(v => v < total);
+  choices.push(Math.min(total, 60));
+  const pick = choices.includes(10) ? 10 : choices[choices.length - 1];
+  return choices.map(v => `<option value="${v}" ${v === pick ? 'selected' : ''}>${v === total ? `all ${total}` : `first ${v}`}</option>`).join('');
+}
+
+async function showNotes(notes) {
+  currentNotes = { ...notes, id: crypto.randomUUID(), savedAt: null };
+  $('#notes').innerHTML = renderNotes(currentNotes, false);
+  bindNoteActions($('#notes'), currentNotes);
+  await whenMathReady();
+  typeset($('#notes'), currentNotes.mathml);
+  if (currentNotes.pdf && !currentNotes.pdf.scanned) renderPdfPreviews($('#notes'), currentNotes.pdf);
+}
+
+async function runOcr(root, n, button) {
+  const box = root.querySelector('.ocr-box');
+  const bar = box.querySelector('.progress div');
+  const stage = box.querySelector('[data-ocr-stage]');
+  box.querySelector('.ocr-progress').hidden = false;
+  button.disabled = true;
+  try {
+    const maxPages = Number(box.querySelector('[data-ocr-pages]').value);
+    const { pages, totalPages } = await ocrPdf(n.pdf.url, {
+      maxPages,
+      onProgress: ({ stage: text, fraction }) => { stage.textContent = text; bar.style.width = Math.round(fraction * 100) + '%'; },
+    });
+    const notes = await api('/api/notes/ocr', { url: n.pdf.url, title: n.title, pages, totalPages, detail: $('#detail').value, mode: $('#useAi').checked ? 'auto' : 'offline' });
+    await showNotes(notes);
+    toast('Scanned PDF read with OCR');
+  } catch (err) {
+    stage.textContent = 'OCR failed: ' + err.message;
+    button.disabled = false;
+  }
+}
+
 function renderNotes(n, saved) {
+  const waitingForOcr = n.pdf?.scanned && !saved;
   const list = arr => `<ul>${arr.map(p => `<li>${esc(p)}</li>`).join('')}</ul>`;
   const figures = n.figures || [];
   const shown = new Set();
@@ -102,9 +137,14 @@ function renderNotes(n, saved) {
   const rest = figures.filter((f, i) => !shown.has(i));
   return `<article class="card notes">
     <h2>${esc(n.title)}</h2>
-    <p class="small muted">From <a href="${esc(n.source.url)}" target="_blank" rel="noopener">${esc(n.source.name)}</a> · ${esc(n.source.license)} · about ${n.stats.readingMinutes} min to read the original · ${n.generatedBy === 'ai' ? 'written by AI' : 'auto-summarised'}</p>
-    ${n.notice ? `<p class="small notice">${esc(n.notice)}</p>` : ''}
-    <div class="tldr"><strong>In one line:</strong> ${esc(n.tldr)}</div>
+    <p class="small muted">From <a href="${esc(n.source.url)}" target="_blank" rel="noopener">${esc(n.source.name)}</a> · ${esc(n.source.license)}${waitingForOcr ? ` · scanned PDF, ${n.pdf.pages} pages` : ` · about ${n.stats.readingMinutes} min to read the original · ${n.generatedBy === 'ai' ? 'written by AI' : n.pdf?.ocr ? 'read with OCR, auto-summarised' : 'auto-summarised'}`}</p>
+    ${n.notice && !waitingForOcr ? `<p class="small notice">${esc(n.notice)}</p>` : ''}
+    ${n.pdf?.scanned && !saved ? `<div class="ocr-box">
+      <p><strong>This PDF is scanned.</strong> Studify can read it with OCR (optical character recognition) right here in your browser. It takes roughly 5–15 seconds per page.</p>
+      <div class="row"><label>Pages <select data-ocr-pages>${ocrPageOptions(n.pdf.pages)}</select></label>
+      <button class="primary" data-act="ocr">Read with OCR</button></div>
+      <div class="ocr-progress" hidden><div class="progress"><div style="width:0%"></div></div><p class="small muted" data-ocr-stage></p></div>
+    </div>` : `<div class="tldr"><strong>In one line:</strong> ${esc(n.tldr)}</div>`}
     ${n.analogy ? `<p><strong>Think of it like this:</strong> ${esc(n.analogy)}</p>` : ''}
     ${n.overview.length ? `<h3>Key ideas</h3>${list(n.overview)}` : ''}
     ${overviewFigs}
@@ -119,7 +159,7 @@ function renderNotes(n, saved) {
     ${n.keyTerms.length ? `<h3>Key terms</h3><div class="terms">${n.keyTerms.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
     ${n.flashcards.length ? `<h3>Flashcards <span class="small muted">(tap to reveal)</span></h3><div class="flash">${n.flashcards.map(f => `<button class="flashcard"><div>${esc(f.q)}</div><div class="a">${esc(f.a)}</div></button>`).join('')}</div>` : ''}
     ${!saved && n.related?.length ? `<h3>More from this course or book</h3><div class="related">${n.related.map((r, i) => `<button type="button" class="link" data-rel="${i}">${esc(r.title)}</button>`).join('')}</div>` : ''}
-    <div class="toolbar">
+    <div class="toolbar" ${waitingForOcr ? 'hidden' : ''}>
       ${saved ? '<button data-act="delete">Delete</button>' : '<button class="primary" data-act="save">Save to my notes</button>'}
       <button data-act="md">Download Markdown</button>
       <button data-act="copy">Copy</button>
@@ -147,6 +187,8 @@ function bindNoteActions(root, n) {
       a.click(); URL.revokeObjectURL(a.href);
     } else if (act === 'copy') {
       try { await navigator.clipboard.writeText(n.markdown); toast('Copied as Markdown'); } catch { toast('Copy failed'); }
+    } else if (act === 'ocr') {
+      runOcr(root, n, b);
     } else if (act === 'print') {
       window.print();
     } else if (act === 'plan') {
