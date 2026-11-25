@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studify</title>
+  <meta name="description" content="Plan your studies and turn open course material into simple notes.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📘</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">📘 Studify</div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="learn" aria-selected="true">Learn</button>
+      <button role="tab" data-tab="library" aria-selected="false">My notes <span id="libCount" class="pill">0</span></button>
+      <button role="tab" data-tab="plan" aria-selected="false">Planner</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- LEARN -->
+    <section id="tab-learn" class="tab">
+      <div class="card">
+        <h1>What do you want to learn?</h1>
+        <p class="muted">Studify reads free, open-licensed sources and turns them into short, simple notes.</p>
+        <form id="searchForm" class="row">
+          <input id="q" type="search" placeholder="e.g. Photosynthesis, Fourier transform, Supply and demand" required autocomplete="off">
+          <select id="source" aria-label="Source">
+            <option value="simplewiki">Simple Wikipedia (easiest)</option>
+            <option value="wikipedia" selected>Wikipedia</option>
+            <option value="wikibooks">Wikibooks (textbooks)</option>
+            <option value="arxiv">arXiv (research papers)</option>
+          </select>
+          <button type="submit" class="primary">Search</button>
+        </form>
+        <details class="import">
+          <summary>Import a page from MIT OpenCourseWare, OpenStax, LibreTexts or OpenLearn</summary>
+          <form id="urlForm" class="row">
+            <input id="url" type="url" placeholder="https://ocw.mit.edu/courses/…/lecture-notes/" required>
+            <button type="submit">Make notes</button>
+          </form>
+          <p class="muted small" id="importSites"></p>
+        </details>
+        <div class="row opts">
+          <label>Detail
+            <select id="detail"><option value="brief">Brief</option><option value="normal" selected>Normal</option><option value="detailed">Detailed</option></select>
+          </label>
+          <label id="aiToggleWrap" hidden><input type="checkbox" id="useAi" checked> Use AI to write notes</label>
+        </div>
+      </div>
+
+      <div id="results"></div>
+      <div id="notes"></div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section id="tab-library" class="tab" hidden>
+      <div class="card">
+        <h1>My notes</h1>
+        <p class="muted">Saved in this browser. Export any note as Markdown.</p>
+        <input id="libFilter" type="search" placeholder="Filter saved notes">
+      </div>
+      <div id="library"></div>
+    </section>
+
+    <!-- PLANNER -->
+    <section id="tab-plan" class="tab" hidden>
+      <div class="card">
+        <h1>Study planner</h1>
+        <p class="muted">List your topics. Studify spreads them out and adds spaced reviews (1, 3, 7 and 14 days later) before your exam.</p>
+        <form id="planForm" class="grid">
+          <label class="span2">Topics (one per line)
+            <textarea id="topics" rows="6" placeholder="Cell structure&#10;Photosynthesis&#10;Respiration&#10;Genetics"></textarea>
+          </label>
+          <label>Start date <input type="date" id="startDate" required></label>
+          <label>Exam date <input type="date" id="examDate" required></label>
+          <label>Minutes per day <input type="number" id="minutesPerDay" min="10" max="720" value="60"></label>
+          <label>Minutes to learn a topic <input type="number" id="learnMinutes" min="10" max="300" value="45"></label>
+          <div class="span2 row"><button class="primary" type="submit">Build my plan</button><button type="button" id="clearPlan">Clear plan</button></div>
+        </form>
+      </div>
+      <div id="plan"></div>
+    </section>
+  </main>
+
+  <footer class="muted small">Content comes from its original sources under their open licenses; each note links back with attribution. Studify respects robots.txt.</footer>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "studify",
+  "version": "0.1.0",
+  "description": "Study planner and concept summarizer that builds simplified notes from open-licensed learning sites (Wikipedia, MIT OpenCourseWare, OpenStax, Wikibooks, arXiv).",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
+    "cheerio": "^1.2.0",
+    "express": "^4.22.3"
+  }
+}

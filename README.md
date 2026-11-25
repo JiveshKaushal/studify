@@ -1,0 +1,66 @@
+# 📘 Studify
+
+Studify is a study planner and concept summarizer. It reads free, open-licensed learning sites and turns them into short, simple notes. It can also build you a study timetable with spaced reviews.
+
+## Features
+
+- **Search open sources:** Wikipedia, Simple English Wikipedia, Wikibooks and arXiv (paper abstracts), all through their public APIs.
+- **Import pages by link** from MIT OpenCourseWare, OpenStax, LibreTexts, OpenLearn, Wikiversity and the sites above. Studify checks each site's `robots.txt` first and refuses pages that bots are asked not to read. Pages from any other site are refused too.
+- **Simplified notes** for every page: a one-line summary, key ideas, bullet points per section, key definitions, key terms and flashcards. Every note links back to its source and names its license.
+- **Two ways to write notes:**
+  - *Offline (default):* a built-in summarizer picks the most important sentences and rewrites them in plainer words. It needs no API key and costs nothing.
+  - *AI (optional):* set `ANTHROPIC_API_KEY` and Claude writes the notes in simple language, including an everyday analogy. It uses only facts from the source page. If the AI call fails, Studify falls back to offline notes.
+- **My notes:** save notes in your browser, filter them, and export them as Markdown, copy them or print them.
+- **Planner:** enter your topics, start date, exam date and daily minutes. Studify spreads the topics out, schedules reviews 1, 3, 7 and 14 days after you learn each one, and adds a final revision day. It warns you about overloaded days and lets you tick tasks off.
+
+## Run it
+
+You need Node.js 18 or newer.
+
+```bash
+npm install
+npm start
+```
+
+Then open http://localhost:3000.
+
+To turn on AI notes (optional):
+
+```bash
+ANTHROPIC_API_KEY=your-key npm start
+```
+
+## Tests
+
+```bash
+npm test
+```
+
+The tests stub every outside website, so they run offline.
+
+## API
+
+| Method | Path | Body / query |
+|---|---|---|
+| GET | `/api/search` | `?source=wikipedia\|simplewiki\|wikibooks\|arxiv&q=topic` |
+| POST | `/api/notes` | `{ source, id }` or `{ source: "url", url }`, plus `detail: brief\|normal\|detailed` and `mode: auto\|offline` |
+| POST | `/api/plan` | `{ topics: [], startDate, examDate, minutesPerDay, learnMinutes }` |
+| GET | `/api/sources`, `/api/status` | |
+
+## Project layout
+
+```
+server.js          Express server and API routes
+src/sources.js     Source adapters, the import allowlist and licenses
+src/http.js        fetch with timeout, caching and robots.txt checks
+src/extract.js     Turns HTML and wiki text into sections
+src/summarize.js   Offline summarizer and simplifier, Markdown export
+src/ai.js          Optional Claude-written notes
+src/planner.js     Spaced-repetition study planner
+public/            Frontend (plain HTML, CSS and JS)
+test/              node:test tests
+```
+
+## Content and licenses
+
+Studify's code is MIT-licensed. Notes are derived from their sources and stay under those sources' licenses (for example, Wikipedia and Wikibooks are CC BY-SA 4.0, MIT OCW is CC BY-NC-SA 4.0 and OpenStax is CC BY 4.0). Every note shows its source link and license, so keep that attribution when you share notes.
