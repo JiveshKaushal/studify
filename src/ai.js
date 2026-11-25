@@ -67,6 +67,7 @@ export async function buildAiNotes(doc, { detail = 'normal' } = {}) {
     source: { name: doc.sourceName, url: doc.url, license: doc.license, authors: doc.authors },
     related: doc.related || [],
     notice: doc.notice,
+    pdf: doc.pdf,
     generatedBy: 'ai',
   }, doc, detail);
 }

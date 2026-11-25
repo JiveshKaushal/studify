@@ -88,3 +88,7 @@ figure.pic .credit { white-space: nowrap; }
 .cm-leaf rect { fill: var(--card); stroke: var(--border); stroke-width: 1.5; }
 .cm-leaf text { fill: var(--muted); font-size: 12px; }
 @media print { figure.pic img { max-height: 260px; } .gallery { grid-template-columns: 1fr 1fr; } }
+
+.pdf-pages { display: grid; gap: 14px; }
+.pdf-canvas { min-height: 160px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: #555; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.pdf-canvas canvas { display: block; width: 100%; height: auto; }

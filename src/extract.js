@@ -147,11 +147,12 @@ function relatedLinks($, baseUrl) {
     const text = $(a).text().replace(/\s+/g, ' ').trim();
     if (u.hostname !== base.hostname || !u.pathname.startsWith(prefix) || seen.has(u.pathname) || !text || text.length > 90) return;
     if (/^(previous|next|prev|back|home|skip to .*|https?:\/\/.*)$/i.test(text)) return;
-    if (/\.(pdf|zip|mp4|jpg|png)$/i.test(u.pathname) || /download|instructor-insights/i.test(u.pathname)) return;
+    if (/\.(zip|mp4|jpg|png|srt|vtt)$/i.test(u.pathname) || /download|instructor-insights|video_galleries/i.test(u.pathname)) return;
+    if (/^(pdf|zip|mp4)\b.*\b(kb|mb)$/i.test(text)) return; // "pdf 119 kB" duplicates the resource link next to it
     seen.add(u.pathname);
-    out.push({ title: text, url: u.origin + u.pathname });
+    out.push({ title: /\.pdf$/i.test(u.pathname) && !/pdf/i.test(text) ? `${text} (PDF)` : text, url: u.origin + u.pathname });
   });
-  return out.slice(0, 25);
+  return out.slice(0, 40);
 }
 
 // MediaWiki plain-text extracts use "== Heading ==" lines.

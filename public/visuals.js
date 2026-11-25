@@ -120,3 +120,37 @@ export function conceptMap(n) {
   return `<figure class="concept-map"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Concept map of ${esc(plain(n.title))}">${lines.join('')}${parts.join('')}</svg>
     <figcaption>Concept map: the topic in the middle, its main parts around it, and key terms from each part.</figcaption></figure>`;
 }
+
+// ---------- PDF page previews ----------
+let pdfjsPromise = null;
+function loadPdfJs() {
+  pdfjsPromise ||= import('/vendor/pdfjs/pdf.min.mjs').then(m => {
+    m.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+    return m;
+  });
+  return pdfjsPromise;
+}
+
+// Draws the listed pages of a PDF into <canvas> elements inside `root`.
+export async function renderPdfPreviews(root, pdfInfo) {
+  const slots = [...root.querySelectorAll('[data-pdf-page]')];
+  if (!slots.length) return;
+  try {
+    const pdfjs = await loadPdfJs();
+    const doc = await pdfjs.getDocument({ url: '/api/pdf?url=' + encodeURIComponent(pdfInfo.url), isEvalSupported: false }).promise;
+    for (const slot of slots) {
+      const page = await doc.getPage(Number(slot.dataset.pdfPage));
+      const base = page.getViewport({ scale: 1 });
+      const width = Math.min(slot.clientWidth || 640, 820);
+      const scale = (width / base.width) * Math.min(window.devicePixelRatio || 1, 2);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise;
+      slot.replaceChildren(canvas);
+    }
+  } catch (err) {
+    for (const slot of slots) slot.textContent = 'Preview unavailable. Open the PDF to see this page.';
+  }
+}

@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listSources, search, getDocument, externalSearchLinks } from './src/sources.js';
+import { listSources, search, getDocument, externalSearchLinks, fetchPdf } from './src/sources.js';
 import { buildNotes, notesToMarkdown } from './src/summarize.js';
 import { buildPlan } from './src/planner.js';
 import { aiAvailable, buildAiNotes } from './src/ai.js';
@@ -13,6 +13,8 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.static(path.join(here, 'public')));
   // KaTeX (formula rendering) is served from the installed package, no CDN needed.
+  const jsModules = { maxAge: '7d', setHeaders: (res, file) => { if (file.endsWith('.mjs')) res.setHeader('Content-Type', 'text/javascript; charset=utf-8'); } };
+  app.use('/vendor/pdfjs', express.static(path.join(here, 'node_modules', 'pdfjs-dist', 'build'), jsModules));
   app.use('/vendor/katex', express.static(path.join(here, 'node_modules', 'katex', 'dist'), { maxAge: '7d' }));
 
   const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(err => {
@@ -42,6 +44,13 @@ export function createApp() {
     if (aiError) notes.notice = [`AI notes failed (${aiError}); showing offline notes instead.`, notes.notice].filter(Boolean).join(' ');
     notes.markdown = notesToMarkdown(notes);
     res.json(notes);
+  }));
+
+  // Lets the browser draw page previews of an allowed PDF (the source sites don't allow cross-site reads).
+  app.get('/api/pdf', wrap(async (req, res) => {
+    const buffer = await fetchPdf(String(req.query.url || ''));
+    res.set({ 'Content-Type': 'application/pdf', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" });
+    res.send(buffer);
   }));
 
   app.post('/api/plan', wrap(async (req, res) => res.json(buildPlan(req.body || {}))));

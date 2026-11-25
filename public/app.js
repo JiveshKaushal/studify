@@ -1,4 +1,4 @@
-import { typeset, whenMathReady, conceptMap } from './visuals.js';
+import { typeset, whenMathReady, conceptMap, renderPdfPreviews } from './visuals.js';
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -68,6 +68,7 @@ async function makeNotes(target, button) {
     bindNoteActions($('#notes'), currentNotes);
     await whenMathReady();
     typeset($('#notes'), currentNotes.mathml);
+    if (currentNotes.pdf) renderPdfPreviews($('#notes'), currentNotes.pdf);
     $('#notes').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     $('#notes').innerHTML = `<div class="card notice">${esc(err.message)}</div>`;
@@ -110,6 +111,9 @@ function renderNotes(n, saved) {
     ${conceptMap(n)}
     ${n.formulas?.length ? `<h3>Formulas</h3>${formulasHtml(n.formulas)}` : ''}
     ${sectionsHtml}
+    ${n.pdf?.visualPages?.length ? `<h3>Pages with figures and formulas <span class="small muted">(from the PDF)</span></h3><div class="pdf-pages">${n.pdf.visualPages.map(v => `<figure class="pic pdf-page">
+      <div class="pdf-canvas" data-pdf-page="${v.page}"><span class="spinner"></span>Drawing page ${v.page}…</div>
+      <figcaption>${v.label ? esc(v.label) + ' · ' : ''}<a href="${esc(n.pdf.url)}#page=${v.page}" target="_blank" rel="noopener">page ${v.page} of ${n.pdf.pages}</a></figcaption></figure>`).join('')}</div>` : ''}
     ${rest.length ? `<h3>More diagrams</h3><div class="gallery">${rest.map(figureHtml).join('')}</div>` : ''}
     ${n.definitions.length ? `<h3>Key definitions</h3><dl>${n.definitions.map(d => `<dt>${esc(d.term)}</dt><dd>${esc(d.definition)}</dd>`).join('')}</dl>` : ''}
     ${n.keyTerms.length ? `<h3>Key terms</h3><div class="terms">${n.keyTerms.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
@@ -168,6 +172,7 @@ function renderLibrary() {
     bindNoteActions(wrap, n);
     root.append(wrap);
     whenMathReady().then(() => typeset(wrap, n.mathml));
+    if (n.pdf) renderPdfPreviews(wrap, n.pdf);
   }
 }
 $('#libFilter').addEventListener('input', renderLibrary);

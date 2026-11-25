@@ -6,6 +6,7 @@ Studify is a study planner and concept summarizer. It reads free, open-licensed 
 
 - **Search open sources:** Wikipedia, Simple English Wikipedia, Wikibooks and arXiv (paper abstracts), all through their public APIs.
 - **Import pages by link** from MIT OpenCourseWare, OpenStax, LibreTexts, OpenLearn, Wikiversity and the sites above. Studify checks each site's `robots.txt` first and refuses pages that bots are asked not to read. Pages from any other site are refused too.
+- **Lecture-note PDFs:** paste a PDF link, or an MIT OCW resource page that wraps a PDF, and Studify reads it. It finds headings from font sizes, skips the OCW cover page, running headers and page numbers, and builds notes from the text. Formulas in PDFs are just positioned characters and can't be turned back into LaTeX, so pages with figures or formulas are shown as page previews, drawn in your browser with pdf.js. PDFs up to 25 MB are supported, and the first 60 pages are read.
 - **Course and book navigation:** importing an MIT OCW course page lists its sub-pages (syllabus, lecture notes and so on), and you can make notes from any of them in one click.
 - **Simplified notes** for every page: a one-line summary, key ideas, bullet points per section, key definitions, key terms and flashcards. Every note links back to its source and names its license.
 - **Formulas:** maths and science formulas are kept exactly as the source writes them and shown properly, not flattened into text like `a2+b2=c2`. Each one sits on a formula card with the sentence that explains it and the section it came from. Wikipedia and LibreTexts formulas render as LaTeX with KaTeX (bundled with the app, no CDN). OpenStax formulas render as MathML, which is cleaned to an allowlist of maths tags first, so nothing unsafe gets into the page.
@@ -19,7 +20,7 @@ Studify is a study planner and concept summarizer. It reads free, open-licensed 
 
 ## Run it
 
-You need Node.js 18 or newer.
+You need Node.js 22.13 or newer.
 
 ```bash
 npm install
@@ -62,6 +63,7 @@ The tests stub every outside website, so they run offline.
 | GET | `/api/search` | `?source=wikipedia\|simplewiki\|wikibooks\|arxiv&q=topic` |
 | POST | `/api/notes` | `{ source, id }` or `{ source: "url", url }`, plus `detail: brief\|normal\|detailed` and `mode: auto\|offline` |
 | POST | `/api/plan` | `{ topics: [], startDate, examDate, minutesPerDay, learnMinutes }` |
+| GET | `/api/pdf` | `?url=` a PDF on an allowed site (used for page previews) |
 | GET | `/api/sources`, `/api/status` | |
 
 ## Project layout
@@ -71,6 +73,7 @@ server.js          Express server and API routes
 src/sources.js     Source adapters, the import allowlist and licenses
 src/http.js        fetch with timeout, caching and robots.txt checks
 src/extract.js     Turns HTML and wiki text into sections
+src/pdf.js         PDF text, headings and figure/formula pages (pdf.js)
 src/math.js        Formula extraction, MathML cleaning, LaTeX placeholders
 src/summarize.js   Offline summarizer and simplifier, Markdown export
 src/ai.js          Optional Claude-written notes

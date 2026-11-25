@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
-import { fetchJson, fetchText, robotsAllows } from './http.js';
+import { fetchJson, fetchText, fetchBuffer, robotsAllows } from './http.js';
+import { extractFromPdf, MAX_PDF_BYTES } from './pdf.js';
 import { extractFromHtml, sectionsFromWikiText } from './extract.js';
 import { MathStore } from './math.js';
 
@@ -108,14 +109,64 @@ export async function getDocument({ source, id, url }) {
   throw badRequest(`Unknown source "${source}".`);
 }
 
-export async function importUrl(url) {
+const isPdfBuffer = buf => buf.subarray(0, 5).toString('latin1') === '%PDF-';
+
+// Checks that a URL is on an allowed site and that its robots.txt lets Studify read it.
+export async function checkImportable(url) {
   const site = siteForUrl(url);
   if (!site) throw badRequest('Studify only imports pages from open-licensed sites: ' + IMPORT_SITES.map(s => s.domain).join(', ') + '.');
   if (!(await robotsAllows(url))) { const e = new Error(`${site.name} asks bots not to read this page (robots.txt), so Studify will not import it.`); e.status = 403; throw e; }
+  return site;
+}
+
+// Fetches a PDF from an allowed site (used for notes and for the browser's page previews).
+export async function fetchPdf(url) {
+  await checkImportable(url);
+  const { buffer } = await fetchBuffer(url, { maxBytes: MAX_PDF_BYTES });
+  if (!isPdfBuffer(buffer)) throw badRequest('That link is not a PDF file.');
+  return buffer;
+}
+
+async function importPdf(url, site, titleHint) {
+  const buffer = await fetchPdf(url);
+  const pdf = await extractFromPdf(buffer);
+  const fileName = decodeURIComponent(new URL(url).pathname.split('/').pop()).replace(/\.pdf$/i, '').replace(/^[0-9a-f]{32}_/, '')
+    .replace(/^lec(?:ture)?[_ -]?0*(\d+)$/i, 'Lecture $1').replace(/[_-]+/g, ' ');
+  const words = pdf.sections.reduce((a, s) => a + s.text.split(/\s+/).length, 0);
+  const notices = [];
+  if (pdf.pagesRead < pdf.pages) notices.push(`Only the first ${pdf.pagesRead} of ${pdf.pages} pages were read.`);
+  if (words < 120) notices.push(pdf.visualPages.length ? 'This PDF is mostly figures and formulas, so there is little text to summarise. See the page previews below.' : 'Studify could not find much text in this PDF. It may be a scanned document.');
+  return {
+    title: titleHint || pdf.title || fileName,
+    sections: pdf.sections.length ? pdf.sections : [{ heading: 'Introduction', text: '' }],
+    figures: [],
+    math: [],
+    related: [],
+    url,
+    sourceName: site.name,
+    license: site.license,
+    pdf: { url, pages: pdf.pages, visualPages: pdf.visualPages },
+    notice: notices.join(' ') || undefined,
+  };
+}
+
+export async function importUrl(url) {
+  const site = await checkImportable(url);
+  if (/\.pdf($|[?#])/i.test(new URL(url).pathname + new URL(url).search)) return importPdf(url, site);
+
   const html = await fetchText(url, { accept: 'text/html' });
   const doc = extractFromHtml(html, url);
-  if (!doc.sections.length) throw badRequest('Could not find readable text on that page. Try a lecture-notes or chapter page instead of an index page.');
   const words = doc.sections.reduce((a, s) => a + s.text.split(/\s+/).length, 0);
+  // MIT OCW "resource" pages wrap a single PDF: read the PDF instead.
+  if (words < 150) {
+    const $ = cheerio.load(html);
+    const pdfHref = $('main a[href$=".pdf"], a.download-file[href$=".pdf"], a[href$=".pdf"]').first().attr('href');
+    if (pdfHref && /\/resources\//.test(new URL(url).pathname)) {
+      const pdfUrl = new URL(pdfHref, url).href;
+      if (siteForUrl(pdfUrl)) return importPdf(pdfUrl, site, doc.title.split(' | ')[0]);
+    }
+  }
+  if (!doc.sections.length) throw badRequest('Could not find readable text on that page. Try a lecture-notes or chapter page instead of an index page.');
   if (words < 150 && doc.related.length) doc.notice = 'This looks like an overview page with little text. Pick a page below (lecture notes, readings, chapters) for fuller notes.';
   return { ...doc, url, sourceName: site.name, license: site.license };
 }
