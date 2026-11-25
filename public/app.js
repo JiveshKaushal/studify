@@ -85,6 +85,7 @@ function renderNotes(n, saved) {
     ${n.definitions.length ? `<h3>Key definitions</h3><dl>${n.definitions.map(d => `<dt>${esc(d.term)}</dt><dd>${esc(d.definition)}</dd>`).join('')}</dl>` : ''}
     ${n.keyTerms.length ? `<h3>Key terms</h3><div class="terms">${n.keyTerms.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
     ${n.flashcards.length ? `<h3>Flashcards <span class="small muted">(tap to reveal)</span></h3><div class="flash">${n.flashcards.map(f => `<button class="flashcard"><div>${esc(f.q)}</div><div class="a">${esc(f.a)}</div></button>`).join('')}</div>` : ''}
+    ${!saved && n.related?.length ? `<h3>More from this course or book</h3><div class="related">${n.related.map((r, i) => `<button type="button" class="link" data-rel="${i}">${esc(r.title)}</button>`).join('')}</div>` : ''}
     <div class="toolbar">
       ${saved ? '<button data-act="delete">Delete</button>' : '<button class="primary" data-act="save">Save to my notes</button>'}
       <button data-act="md">Download Markdown</button>
@@ -96,6 +97,7 @@ function renderNotes(n, saved) {
 }
 
 function bindNoteActions(root, n) {
+  root.querySelectorAll('[data-rel]').forEach(b => b.addEventListener('click', () => makeNotes({ source: 'url', url: n.related[b.dataset.rel].url }, b)));
   root.querySelectorAll('.flashcard').forEach(c => c.addEventListener('click', () => c.classList.toggle('open')));
   root.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', async () => {
     const act = b.dataset.act;

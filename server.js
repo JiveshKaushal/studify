@@ -37,7 +37,7 @@ export function createApp() {
       try { notes = await buildAiNotes(doc, { detail }); } catch (e) { aiError = e.message; }
     }
     if (!notes) notes = buildNotes(doc, { detail });
-    if (aiError) notes.notice = `AI notes failed (${aiError}); showing offline notes instead.`;
+    if (aiError) notes.notice = [`AI notes failed (${aiError}); showing offline notes instead.`, notes.notice].filter(Boolean).join(' ');
     notes.markdown = notesToMarkdown(notes);
     res.json(notes);
   }));

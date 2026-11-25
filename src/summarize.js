@@ -12,6 +12,8 @@ const PLAIN = [
   [/\bdue to the fact that\b/gi, 'because'], [/\bwith regard to\b/gi, 'about'], [/\ba number of\b/gi, 'several'],
 ];
 
+const BAD_TERM_START = new Set('although after before during following here there those these this that such its their another every each most some many all one term result results reason way part example kind type process number amount level main key other same how why where whether because'.split(' '));
+
 const ABBREV = /\b(e\.g|i\.e|etc|vs|Dr|Mr|Mrs|Ms|Prof|St|Fig|No|approx|ca|cf|al|Jr|Sr|Inc|Ltd|U\.S|U\.K)\.$/i;
 
 export function splitSentences(text) {
@@ -51,8 +53,10 @@ function frequencies(text) {
 }
 
 // Pick the most informative sentences, returned in original order.
+const BOILERPLATE = /^(by the end of this (section|chapter|module|lecture)|in this (section|chapter|lecture|module), (you|we) will|learning objectives|you will be able to|this (page|section) (contains|provides|includes)|(describe|explain|identify|list|compare|define|discuss|summari[sz]e|understand|analy[sz]e|recogni[sz]e|outline|state) (the|how|what|why|a|an)\b)/i;
+
 export function topSentences(text, k, globalFreq) {
-  const sents = splitSentences(text).filter(s => s.length > 30 && s.length < 450);
+  const sents = splitSentences(text).filter(s => s.length > 30 && s.length < 450 && !BOILERPLATE.test(s));
   if (sents.length <= k) return sents;
   const freq = globalFreq || frequencies(text);
   const max = Math.max(...freq.values(), 1);
@@ -72,12 +76,17 @@ export function findDefinitions(text, title) {
   const seen = new Set();
   for (const s of splitSentences(text)) {
     const clean = simplifySentence(s);
-    const m = clean.match(/^(?:An?|The)?\s*([A-Za-z][\w\s'-]{1,48}?)\s+(is|are|refers to|means|is defined as|describes)\s+(.{15,240})$/);
+    const m = clean.match(/^(?:(?:An?|The)\s+)?([A-Za-z][\w\s'-]{1,48}?)\s+(is|are|refers to|means|is defined as|describes)\s+(.{15,240})$/);
     if (!m) continue;
     let term = m[1].trim();
-    if (/^(it|this|these|they|there|that|he|she|which|what)$/i.test(term) || term.split(' ').length > 5) continue;
-    if (/^(some|most|many|all|each|every|one|much|several|such|other|both|few|its|their|his|her|our|in|on|at|for|however|when|while|if)\b/i.test(term)) continue;
-    if (/^(it|this|they)\b/i.test(term)) term = title;
+    const ws = term.split(/\s+/);
+    if (ws.length > 4) continue;
+    const first = ws[0].toLowerCase();
+    if (/^(it|this|they)$/i.test(term)) continue;
+    else if (ws.length === 1 && term.length < 5) continue;
+    else if (STOP.has(first) || BAD_TERM_START.has(first) || /(ed|ing|ly)$/.test(first) && ws.length > 1) continue;
+    else if (ws.slice(1).some(w => /ly$/.test(w) || (STOP.has(w.toLowerCase()) && !['of', 'and'].includes(w.toLowerCase())))) continue;
+    else if (ws.length === 1 && /(ed|ing|ly)$/.test(first)) continue;
     const key = term.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -117,7 +126,7 @@ export function buildNotes(doc, { detail = 'normal' } = {}) {
   const intro = doc.sections[0]?.text || all;
 
   const sections = doc.sections
-    .filter(s => s.text.length > 120)
+    .filter(s => s.text.length > 120 && !/^(learning objectives|objectives|key terms|glossary|references|footnotes)$/i.test(s.heading))
     .slice(0, maxSections + 1)
     .map(s => ({ heading: s.heading, points: topSentences(s.text, perSection, freq).map(simplifySentence) }))
     .filter(s => s.points.length);
@@ -133,7 +142,7 @@ export function buildNotes(doc, { detail = 'normal' } = {}) {
   const wordCount = all.split(/\s+/).length;
   return {
     title: doc.title,
-    tldr: simplifySentence(topSentences(intro, 1, freq)[0] || doc.title),
+    tldr: simplifySentence(firstGoodSentence(intro) || topSentences(intro, 1, freq)[0] || doc.title),
     overview: overviewSection ? overviewSection.points : [],
     sections: rest.slice(0, maxSections),
     definitions,
@@ -141,8 +150,15 @@ export function buildNotes(doc, { detail = 'normal' } = {}) {
     flashcards,
     stats: { sourceWords: wordCount, readingMinutes: Math.max(1, Math.round(wordCount / 220)) },
     source: { name: doc.sourceName, url: doc.url, license: doc.license, authors: doc.authors },
+    related: doc.related || [],
+    notice: doc.notice,
     generatedBy: 'offline',
   };
+}
+
+function firstGoodSentence(text) {
+  const s = splitSentences(text).find(x => !BOILERPLATE.test(x));
+  return s && s.length >= 40 && s.length <= 320 ? s : null;
 }
 
 export function notesToMarkdown(n) {

@@ -54,6 +54,8 @@ export async function buildAiNotes(doc, { detail = 'normal' } = {}) {
     analogy: n.analogy ? String(n.analogy) : undefined,
     stats: { sourceWords: words, readingMinutes: Math.max(1, Math.round(words / 220)) },
     source: { name: doc.sourceName, url: doc.url, license: doc.license, authors: doc.authors },
+    related: doc.related || [],
+    notice: doc.notice,
     generatedBy: 'ai',
   };
 }

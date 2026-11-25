@@ -1,5 +1,6 @@
 // Small fetch helper: polite User-Agent, timeout, in-memory cache, robots.txt check.
-const UA = 'StudifyBot/0.1 (open-source study notes app; respects robots.txt)';
+// Wikimedia asks API clients to include contact info: set STUDIFY_CONTACT to a URL or email.
+const UA = `StudifyBot/0.1 (open-source study notes app; respects robots.txt${process.env.STUDIFY_CONTACT ? '; ' + process.env.STUDIFY_CONTACT : ''})`;
 const cache = new Map();
 const CACHE_MS = 30 * 60 * 1000;
 

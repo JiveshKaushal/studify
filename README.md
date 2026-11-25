@@ -6,6 +6,7 @@ Studify is a study planner and concept summarizer. It reads free, open-licensed 
 
 - **Search open sources:** Wikipedia, Simple English Wikipedia, Wikibooks and arXiv (paper abstracts), all through their public APIs.
 - **Import pages by link** from MIT OpenCourseWare, OpenStax, LibreTexts, OpenLearn, Wikiversity and the sites above. Studify checks each site's `robots.txt` first and refuses pages that bots are asked not to read. Pages from any other site are refused too.
+- **Course and book navigation:** importing an MIT OCW course page lists its sub-pages (syllabus, lecture notes and so on), and you can make notes from any of them in one click.
 - **Simplified notes** for every page: a one-line summary, key ideas, bullet points per section, key definitions, key terms and flashcards. Every note links back to its source and names its license.
 - **Two ways to write notes:**
   - *Offline (default):* a built-in summarizer picks the most important sentences and rewrites them in plainer words. It needs no API key and costs nothing.
@@ -38,6 +39,8 @@ ANTHROPIC_API_KEY=your-key npm start
 2. Render reads `render.yaml` and sets up a free web service called `studify`.
 3. `ANTHROPIC_API_KEY` is optional. Leave it empty to use the free offline summarizer.
 4. Click **Apply**. The app goes live at `https://studify-xxxx.onrender.com`, and every push to `main` redeploys it.
+
+Optional: in the service's **Environment** settings, add `STUDIFY_CONTACT` with a URL or email. Wikimedia asks API clients to include contact info, and adding it lowers the chance of being rate-limited.
 
 Free Render services go to sleep after 15 minutes without visits, so the first visit after that takes about a minute.
 

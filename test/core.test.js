@@ -85,3 +85,22 @@ test('arXiv Atom feed parsing', () => {
   assert.equal(e.title, 'Attention Is All You Need');
   assert.equal(e.authors[0], 'Ashish Vaswani');
 });
+
+test('div-only course pages fall back to prose blocks and list sub-pages', () => {
+  const html = `<html><head><title>Principles of Microeconomics | Economics | MIT OpenCourseWare</title></head><body><main>
+    <div class="nav">Browse Course Material Syllabus Calendar Lecture Videos Problem Sets Exams Download Course Info Instructor</div>
+    <div class="description">This introductory undergraduate course covers the fundamentals of microeconomics. Topics include supply and demand, market equilibrium, and consumer theory.</div>
+    <a href="/courses/14-01-x/pages/syllabus/">Syllabus</a><a href="/courses/14-01-x/pages/exams/">Exams</a><a href="/courses/other/">Other</a><a href="/courses/14-01-x/pages/a/">Next</a>
+  </main></body></html>`;
+  const d = extractFromHtml(html, 'https://ocw.mit.edu/courses/14-01-x/');
+  assert.equal(d.title, 'Principles of Microeconomics');
+  assert.equal(d.sections.length, 1);
+  assert.match(d.sections[0].text, /^This introductory undergraduate course/);
+  assert.ok(!d.sections[0].text.includes('Browse Course Material'));
+  assert.deepEqual(d.related.map(r => r.title), ['Syllabus', 'Exams']);
+});
+
+test('learning-objective boilerplate is skipped for the one-line summary', () => {
+  const doc = { title: 'X', sections: [{ heading: 'Intro', text: 'By the end of this section, you will be able to do the following. Describe the main structures involved in photosynthesis. Photosynthesis is the process plants use to turn light into chemical energy stored in sugar.' }] };
+  assert.match(buildNotes(doc).tldr, /^Photosynthesis is the process/);
+});

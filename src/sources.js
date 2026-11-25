@@ -99,7 +99,9 @@ export async function importUrl(url) {
   if (!site) throw badRequest('Studify only imports pages from open-licensed sites: ' + IMPORT_SITES.map(s => s.domain).join(', ') + '.');
   if (!(await robotsAllows(url))) { const e = new Error(`${site.name} asks bots not to read this page (robots.txt), so Studify will not import it.`); e.status = 403; throw e; }
   const html = await fetchText(url, { accept: 'text/html' });
-  const doc = extractFromHtml(html);
+  const doc = extractFromHtml(html, url);
   if (!doc.sections.length) throw badRequest('Could not find readable text on that page. Try a lecture-notes or chapter page instead of an index page.');
+  const words = doc.sections.reduce((a, s) => a + s.text.split(/\s+/).length, 0);
+  if (words < 150 && doc.related.length) doc.notice = 'This looks like an overview page with little text. Pick a page below (lecture notes, readings, chapters) for fuller notes.';
   return { ...doc, url, sourceName: site.name, license: site.license };
 }
