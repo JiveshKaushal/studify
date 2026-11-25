@@ -64,3 +64,10 @@ test('LaTeX typed into page text (LibreTexts style) survives sentence processing
   assert.ok(!t.includes('\\('));
   assert.equal(expandTokens(t, store.items), 'The area is \\(A = \\pi r^2\\). For a sphere \\[V = \\tfrac{4}{3}\\pi r^3.\\]');
 });
+
+test('no stray full stop after a displayed formula', () => {
+  const doc = { title: 'T', math: [{ tex: 'a^2+b^2=c^2.', display: true }], sections: [{ heading: 'Intro', text: 'The theorem can be written as an equation relating the lengths of the sides, called the Pythagorean equation: ⟦m0⟧ The theorem is named for the Greek philosopher Pythagoras, born around 570 BC.' }] };
+  const n = buildNotes(doc);
+  const p = n.overview.find(x => x.includes('\\['));
+  assert.ok(p.endsWith('\\]'), p);
+});

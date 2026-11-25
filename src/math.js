@@ -85,7 +85,7 @@ export function expandTokens(text, math) {
     if (!m) return '';
     if (m.tex) return m.display ? `\\[${m.tex}\\]` : `\\(${m.tex}\\)`;
     return t;
-  }).replace(/\s+([,.;:])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  }).replace(/(\\\])\s*[.,]/g, '$1').replace(/\s+([,.;:])/g, '$1').replace(/\s{2,}/g, ' ').trim();
 }
 
 // A formula is worth listing on its own if it's displayed or looks like an equation.

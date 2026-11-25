@@ -44,7 +44,7 @@ export function simplifySentence(s) {
   if (t.length > 220 && t.includes(';')) t = t.split(';')[0].trim() + '.';
   t = t.replace(/[,;:\s]+$/, '');
   if (!t) return '';
-  if (!/[.!?]$/.test(t)) t += '.';
+  if (!/[.!?]$/.test(t) && !/⟦m\d+⟧$/.test(t)) t += '.'; // a formula ending the sentence has its own full stop
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
