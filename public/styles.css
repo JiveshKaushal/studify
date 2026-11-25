@@ -60,3 +60,31 @@ dl dt { font-weight: 600; margin-top: 6px; } dl dd { margin: 0 0 4px; }
 footer { text-align: center; padding: 20px 16px 30px; }
 @media print { header.top, .toolbar, footer, #results, form, details { display: none !important; } .card { border: 0; box-shadow: none; } }
 .related { display: flex; flex-wrap: wrap; gap: 6px 14px; } .related .link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-align: left; }
+
+/* Diagrams, formulas and concept map */
+figure.pic { margin: 10px 0 14px; }
+figure.pic img { display: block; max-width: 100%; max-height: 380px; height: auto; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
+figure.pic figcaption { font-size: .85rem; color: var(--muted); margin-top: 4px; }
+figure.pic .credit { white-space: nowrap; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.gallery figure.pic { margin: 0; }
+.formulas { display: grid; gap: 10px; }
+.formula { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 8px 12px; background: var(--bg); }
+.formula .eq { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.formula .eq math { font-size: 1.15em; display: block; }
+.formula p { margin: 4px 0; }
+.symbols { margin: 4px 0; font-size: .92rem; }
+.notes .katex-display { overflow-x: auto; overflow-y: hidden; margin: .4em 0; }
+.notes li math { font-size: 1.05em; }
+.concept-map { margin: 14px 0; }
+.concept-map svg { width: 100%; height: auto; display: block; }
+.concept-map figcaption { font-size: .8rem; color: var(--muted); text-align: center; }
+.cm-edge { stroke: var(--border); stroke-width: 2; }
+.cm-edge-leaf { stroke-dasharray: 4 3; }
+.cm-center rect { fill: var(--accent); }
+.cm-center text { fill: #fff; font-weight: 700; font-size: 15px; }
+.cm-branch rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.cm-branch text { fill: var(--text); font-weight: 600; font-size: 13px; }
+.cm-leaf rect { fill: var(--card); stroke: var(--border); stroke-width: 1.5; }
+.cm-leaf text { fill: var(--muted); font-size: 12px; }
+@media print { figure.pic img { max-height: 260px; } .gallery { grid-template-columns: 1fr 1fr; } }

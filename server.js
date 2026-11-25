@@ -12,6 +12,8 @@ export function createApp() {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   app.use(express.static(path.join(here, 'public')));
+  // KaTeX (formula rendering) is served from the installed package, no CDN needed.
+  app.use('/vendor/katex', express.static(path.join(here, 'node_modules', 'katex', 'dist'), { maxAge: '7d' }));
 
   const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(err => {
     const status = err.status || (err.name === 'TimeoutError' ? 504 : 500);

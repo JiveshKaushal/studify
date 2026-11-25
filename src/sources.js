@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { fetchJson, fetchText, robotsAllows } from './http.js';
 import { extractFromHtml, sectionsFromWikiText } from './extract.js';
+import { MathStore } from './math.js';
 
 // Sources with a public API that Studify can search directly.
 const WIKIS = {
@@ -77,18 +78,31 @@ export function parseArxiv(xml) {
 export async function getDocument({ source, id, url }) {
   if (WIKIS[source]) {
     const w = WIKIS[source];
+    const pageUrl = `https://${w.host}/wiki/${encodeURIComponent(String(id).replace(/ /g, '_'))}`;
+    try {
+      // Rendered page HTML keeps formulas (with their LaTeX) and figures with captions.
+      const html = await fetchText(`https://${w.host}/api/rest_v1/page/html/${encodeURIComponent(String(id).replace(/ /g, '_'))}?redirect=true`, { accept: 'text/html' });
+      const doc = extractFromHtml(html, pageUrl, { title: String(id) });
+      if (doc.sections.length) return { ...doc, related: [], url: pageUrl, sourceName: w.name, license: w.license };
+    } catch {
+      // Fall back to the plain-text API below (no formulas or pictures); it also reports missing pages.
+    }
     const api = `https://${w.host}/w/api.php?action=query&prop=extracts|info&inprop=url&explaintext=1&redirects=1&format=json&titles=${encodeURIComponent(id)}`;
     const data = await fetchJson(api);
     const page = Object.values(data.query?.pages || {})[0];
     if (!page || page.missing !== undefined || !page.extract) { const e = new Error('Page not found.'); e.status = 404; throw e; }
-    return { title: page.title, url: page.fullurl, sourceName: w.name, license: w.license, sections: sectionsFromWikiText(page.extract) };
+    return { title: page.title, url: page.fullurl, sourceName: w.name, license: w.license, sections: sectionsFromWikiText(page.extract), figures: [], math: [] };
   }
   if (source === 'arxiv') {
     const arxivId = String(id).replace(/^https?:\/\/arxiv\.org\/abs\//, '');
     const xml = await fetchText(`https://export.arxiv.org/api/query?id_list=${encodeURIComponent(arxivId)}`);
     const [entry] = parseArxiv(xml);
     if (!entry) { const e = new Error('Paper not found.'); e.status = 404; throw e; }
-    return { title: entry.title, url: entry.id, sourceName: 'arXiv', license: 'See paper page', authors: entry.authors, sections: [{ heading: 'Abstract', text: entry.summary }] };
+    // Abstracts write LaTeX between $ signs.
+    const store = new MathStore();
+    const text = entry.summary.replace(/\$\$([^$]+)\$\$|\$([^$]{1,200})\$/g, (_, a, b) => store.add({ tex: (a || b).trim(), display: Boolean(a) }));
+    const math = store.items.map(m => ({ ...m, section: 'Abstract' }));
+    return { title: entry.title, url: entry.id, sourceName: 'arXiv', license: 'See paper page', authors: entry.authors, sections: [{ heading: 'Abstract', text }], figures: [], math };
   }
   if (source === 'url') return importUrl(url);
   throw badRequest(`Unknown source "${source}".`);

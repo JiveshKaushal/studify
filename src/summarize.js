@@ -1,3 +1,4 @@
+import { expandTokens, isNotableFormula, TOKEN_RE } from './math.js';
 // Offline, dependency-free note builder: extractive summary + simplification.
 
 const STOP = new Set(('a about above after again against all also am an and any are as at be because been before being below between both but by can could did do does doing down during each few for from further had has have having he her here hers him his how i if in into is it its itself just me more most my no nor not now of off on once only or other our out over own same she should so some such than that the their them then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your may might must one two also however thus often many much used use using called known such like within without well since per via first second new based include includes including').split(' '));
@@ -8,7 +9,7 @@ const PLAIN = [
   [/\bcommence[sd]?\b/gi, 'start'], [/\bterminate[sd]?\b/gi, 'end'], [/\bdemonstrate[sd]?\b/gi, 'show'],
   [/\bfacilitate[sd]?\b/gi, 'help'], [/\bprior to\b/gi, 'before'], [/\bin addition\b/gi, 'also'],
   [/\bnevertheless\b/gi, 'still'], [/\bconsequently\b/gi, 'so'], [/\btherefore\b/gi, 'so'],
-  [/\bsufficient\b/gi, 'enough'], [/\bobtain(s|ed)?\b/gi, 'get$1'], [/\bin the event that\b/gi, 'if'],
+  [/\bsufficient\b/gi, 'enough'], [/\bobtained\b/gi, 'found'], [/\bobtains\b/gi, 'gets'], [/\bobtain\b/gi, 'get'], [/\bin the event that\b/gi, 'if'],
   [/\bdue to the fact that\b/gi, 'because'], [/\bwith regard to\b/gi, 'about'], [/\ba number of\b/gi, 'several'],
 ];
 
@@ -18,7 +19,8 @@ const ABBREV = /\b(e\.g|i\.e|etc|vs|Dr|Mr|Mrs|Ms|Prof|St|Fig|No|approx|ca|cf|al|
 
 export function splitSentences(text) {
   // Split only where end punctuation is followed by whitespace and a capital letter or digit.
-  const parts = text.replace(/\s+/g, ' ').trim().split(/(?<=[.!?]["')\]]*)\s+(?=["'(\[]?[A-Z0-9])/);
+  // A formula that ends a sentence carries its full stop inside the LaTeX, so also split after a formula followed by a new sentence.
+  const parts = text.replace(/\s+/g, ' ').trim().split(/(?<=[.!?]["')\]]*|⟦m\d+⟧)\s+(?=["'(\[]?[A-Z0-9][a-z]*\s+[a-z])|(?<=[.!?]["')\]]*)\s+(?=["'(\[]?[A-Z0-9])/);
   const out = [];
   for (const p of parts) {
     const s = p.trim();
@@ -35,11 +37,13 @@ const words = s => (s.toLowerCase().match(/[a-z][a-z'-]+/g) || []).filter(w => !
 export function simplifySentence(s) {
   let t = s
     .replace(/\[[^\]]*\]/g, '')                 // citation marks like [1]
-    .replace(/\s*\((?:[^()]|\([^()]*\))*\)/g, '') // parentheticals
+    .replace(/\s*\((?:[^()]|\([^()]*\))*\)/g, m => (m.includes('⟦') || m.trim().length <= 10 ? m : '')) // parentheticals (keep formulas and short symbols)
     .replace(/\{\\displaystyle[^}]*\}/g, '')
     .replace(/\s+([,.;:])/g, '$1').replace(/\s+/g, ' ').trim();
-  for (const [re, rep] of PLAIN) t = t.replace(re, m => matchCase(m, rep.replace('$1', '')));
+  for (const [re, rep] of PLAIN) t = t.replace(re, m => matchCase(m, rep));
   if (t.length > 220 && t.includes(';')) t = t.split(';')[0].trim() + '.';
+  t = t.replace(/[,;:\s]+$/, '');
+  if (!t) return '';
   if (!/[.!?]$/.test(t)) t += '.';
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
@@ -53,7 +57,7 @@ function frequencies(text) {
 }
 
 // Pick the most informative sentences, returned in original order.
-const BOILERPLATE = /^(by the end of this (section|chapter|module|lecture)|in this (section|chapter|lecture|module), (you|we) will|learning objectives|you will be able to|this (page|section) (contains|provides|includes)|(describe|explain|identify|list|compare|define|discuss|summari[sz]e|understand|analy[sz]e|recogni[sz]e|outline|state) (the|how|what|why|a|an)\b)/i;
+const BOILERPLATE = /^(by the end of this (section|chapter|module|lecture)|in this (section|chapter|lecture|module), (you|we) will|learning objectives|you will be able to|this (page|section) (contains|provides|includes)|(describe|explain|identify|list|compare|define|discuss|summari[sz]e|understand|analy[sz]e|recogni[sz]e|outline|state|distinguish|calculate|apply|determine|interpret|evaluate|derive|relate|contrast|use) )/i;
 
 export function topSentences(text, k, globalFreq) {
   const sents = splitSentences(text).filter(s => s.length > 30 && s.length < 450 && !BOILERPLATE.test(s));
@@ -139,8 +143,13 @@ export function buildNotes(doc, { detail = 'normal' } = {}) {
     if (s.points[0]) flashcards.push({ q: `Explain "${s.heading}" in one or two sentences.`, a: s.points[0] });
   }
 
-  const wordCount = all.split(/\s+/).length;
-  return {
+  const wordCount = all.replace(/⟦m\d+⟧/g, '').split(/\s+/).length;
+  const formulas = pickFormulas(doc.math || [], detail).map(f => ({
+    ...f,
+    // "…the derivative is." reads better as "…the derivative is:" since the formula is shown with it.
+    context: f.context ? simplifySentence(sentenceFor(f.context, f.id)).replace(/\b(is|are|becomes|as|by|equals|gives|be|written|following|then)\.$/i, '$1:') : '',
+  }));
+  return attachMedia({
     title: doc.title,
     tldr: simplifySentence(firstGoodSentence(intro) || topSentences(intro, 1, freq)[0] || doc.title),
     overview: overviewSection ? overviewSection.points : [],
@@ -152,8 +161,63 @@ export function buildNotes(doc, { detail = 'normal' } = {}) {
     source: { name: doc.sourceName, url: doc.url, license: doc.license, authors: doc.authors },
     related: doc.related || [],
     notice: doc.notice,
+    formulas,
     generatedBy: 'offline',
+  }, doc, detail);
+}
+
+// The sentence that contains the formula, otherwise the last sentence before it.
+function sentenceFor(text, id) {
+  const sents = splitSentences(text);
+  const own = sents.find(x => x.includes(`⟦m${id}⟧`));
+  // The formula itself is shown above the context, so leave it out of the sentence.
+  if (own && own.replace(/⟦m\d+⟧/g, '').trim().length > 25) return own.replace(`⟦m${id}⟧`, ' ').replace(/\s+([,.:;])/g, '$1');
+  const before = sents.filter(x => !x.includes(`⟦m${id}⟧`));
+  return before[before.length - 1] || '';
+}
+
+// Displayed formulas first, then equation-like inline ones; no duplicates.
+export function pickFormulas(math, detail = 'normal') {
+  const max = detail === 'brief' ? 4 : detail === 'detailed' ? 16 : 8;
+  const seen = new Set();
+  const notable = math.map((m, id) => ({ ...m, id })).filter(isNotableFormula);
+  notable.sort((a, b) => Number(b.display) - Number(a.display) || a.id - b.id);
+  const out = [];
+  for (const m of notable) {
+    const key = (m.tex || m.mathml).replace(/\s+/g, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: m.id, latex: m.tex || undefined, section: m.section, context: m.context || '' });
+    if (out.length >= max) break;
+  }
+  return out.sort((a, b) => a.id - b.id);
+}
+
+// Expand formula tokens into LaTeX and attach figures; shared by offline and AI notes.
+export function attachMedia(notes, doc, detail = 'normal') {
+  const math = doc.math || [];
+  const mathml = {};
+  const expand = v => {
+    if (typeof v === 'string') {
+      for (const m of v.matchAll(TOKEN_RE)) if (math[m[1]]?.mathml) mathml[m[1]] = math[m[1]].mathml;
+      return expandTokens(v, math);
+    }
+    if (Array.isArray(v)) return v.map(expand);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === 'source' || k === 'related' ? x : expand(x)]));
+    return v;
   };
+  const out = expand(notes);
+  for (const f of out.formulas || []) {
+    if (f.id !== undefined && !f.latex && math[f.id]?.mathml) { f.mathml = `⟦m${f.id}⟧`; mathml[f.id] = math[f.id].mathml; }
+  }
+  const maxFigures = detail === 'brief' ? 3 : detail === 'detailed' ? 10 : 6;
+  out.figures = (doc.figures || []).slice(0, maxFigures).map(f => ({ ...f, caption: simplifyCaption(expand(f.caption || '')) }));
+  out.mathml = mathml;
+  return out;
+}
+
+function simplifyCaption(c) {
+  return c.replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function firstGoodSentence(text) {
@@ -167,7 +231,12 @@ export function notesToMarkdown(n) {
   for (const s of n.sections || []) lines.push(`## ${s.heading}`, ...s.points.map(p => `- ${p}`), '');
   if (n.definitions?.length) lines.push('## Key definitions', ...n.definitions.map(d => `- **${d.term}**: ${d.definition}`), '');
   if (n.keyTerms?.length) lines.push('## Key terms', n.keyTerms.join(' · '), '');
+  if (n.formulas?.length) lines.push('## Formulas', ...n.formulas.map(f => `- ${f.latex ? '$$' + f.latex + '$$' : '[formula, see source]'}${f.meaning || f.context ? ' — ' + (f.meaning || f.context) : ''}`), '');
+  if (n.figures?.length) lines.push('## Diagrams', ...n.figures.map(f => `![${(f.caption || 'Figure').replace(/[[\]]/g, '')}](${f.src})\n*${f.caption || ''}* ([source](${f.credit}))\n`), '');
   if (n.flashcards?.length) lines.push('## Flashcards', ...n.flashcards.map(f => `- **Q:** ${f.q}\n  **A:** ${f.a}`), '');
   if (n.source) lines.push('---', `Source: [${n.source.name}](${n.source.url}) (${n.source.license}). Notes generated by Studify.`);
-  return lines.join('\n');
+  return lines.join('\n')
+    .replace(/\\\[([\s\S]+?)\\\]/g, (_, t) => `$$${t}$$`)
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_, t) => `$${t}$`)
+    .replace(/⟦m\d+⟧/g, '[formula]');
 }

@@ -1,3 +1,5 @@
+import { typeset, whenMathReady, conceptMap } from './visuals.js';
+
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = {
@@ -64,6 +66,8 @@ async function makeNotes(target, button) {
     currentNotes = { ...notes, id: crypto.randomUUID(), savedAt: null };
     $('#notes').innerHTML = renderNotes(currentNotes, false);
     bindNoteActions($('#notes'), currentNotes);
+    await whenMathReady();
+    typeset($('#notes'), currentNotes.mathml);
     $('#notes').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     $('#notes').innerHTML = `<div class="card notice">${esc(err.message)}</div>`;
@@ -72,8 +76,29 @@ async function makeNotes(target, button) {
   }
 }
 
+function figureHtml(f) {
+  return `<figure class="pic"><a href="${esc(f.src)}" target="_blank" rel="noopener"><img src="${esc(f.src)}" alt="${esc(f.caption || 'Diagram')}" loading="lazy" referrerpolicy="no-referrer"></a>
+    <figcaption>${esc(f.caption)} <a class="credit" href="${esc(f.credit)}" target="_blank" rel="noopener">source &amp; license</a></figcaption></figure>`;
+}
+
+function formulasHtml(formulas) {
+  return `<div class="formulas">${formulas.map(f => `<div class="formula">
+    <div class="eq">${f.latex ? esc('\\[' + f.latex + '\\]') : esc(f.mathml || '')}</div>
+    ${f.meaning ? `<p>${esc(f.meaning)}</p>` : ''}
+    ${f.symbols?.length ? `<ul class="symbols">${f.symbols.map(x => `<li>${esc('\\(' + x.symbol + '\\)')} — ${esc(x.meaning)}</li>`).join('')}</ul>` : ''}
+    ${!f.meaning && f.context ? `<p class="small muted">${esc(f.context)}</p>` : ''}
+    ${f.section ? `<span class="small muted">from “${esc(f.section)}”</span>` : ''}
+  </div>`).join('')}</div>`;
+}
+
 function renderNotes(n, saved) {
   const list = arr => `<ul>${arr.map(p => `<li>${esc(p)}</li>`).join('')}</ul>`;
+  const figures = n.figures || [];
+  const shown = new Set();
+  const figsFor = heading => figures.filter((f, i) => !shown.has(i) && f.section === heading && shown.add(i)).map(figureHtml).join('');
+  const sectionsHtml = n.sections.map(s => `<h3>${esc(s.heading)}</h3>${list(s.points)}${figsFor(s.heading)}`).join('');
+  const overviewFigs = figures.filter((f, i) => !shown.has(i) && shown.add(i)).slice(0, 2).map(figureHtml).join('');
+  const rest = figures.filter((f, i) => !shown.has(i));
   return `<article class="card notes">
     <h2>${esc(n.title)}</h2>
     <p class="small muted">From <a href="${esc(n.source.url)}" target="_blank" rel="noopener">${esc(n.source.name)}</a> · ${esc(n.source.license)} · about ${n.stats.readingMinutes} min to read the original · ${n.generatedBy === 'ai' ? 'written by AI' : 'auto-summarised'}</p>
@@ -81,7 +106,11 @@ function renderNotes(n, saved) {
     <div class="tldr"><strong>In one line:</strong> ${esc(n.tldr)}</div>
     ${n.analogy ? `<p><strong>Think of it like this:</strong> ${esc(n.analogy)}</p>` : ''}
     ${n.overview.length ? `<h3>Key ideas</h3>${list(n.overview)}` : ''}
-    ${n.sections.map(s => `<h3>${esc(s.heading)}</h3>${list(s.points)}`).join('')}
+    ${overviewFigs}
+    ${conceptMap(n)}
+    ${n.formulas?.length ? `<h3>Formulas</h3>${formulasHtml(n.formulas)}` : ''}
+    ${sectionsHtml}
+    ${rest.length ? `<h3>More diagrams</h3><div class="gallery">${rest.map(figureHtml).join('')}</div>` : ''}
     ${n.definitions.length ? `<h3>Key definitions</h3><dl>${n.definitions.map(d => `<dt>${esc(d.term)}</dt><dd>${esc(d.definition)}</dd>`).join('')}</dl>` : ''}
     ${n.keyTerms.length ? `<h3>Key terms</h3><div class="terms">${n.keyTerms.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
     ${n.flashcards.length ? `<h3>Flashcards <span class="small muted">(tap to reveal)</span></h3><div class="flash">${n.flashcards.map(f => `<button class="flashcard"><div>${esc(f.q)}</div><div class="a">${esc(f.a)}</div></button>`).join('')}</div>` : ''}
@@ -138,6 +167,7 @@ function renderLibrary() {
     wrap.innerHTML = renderNotes(n, true);
     bindNoteActions(wrap, n);
     root.append(wrap);
+    whenMathReady().then(() => typeset(wrap, n.mathml));
   }
 }
 $('#libFilter').addEventListener('input', renderLibrary);

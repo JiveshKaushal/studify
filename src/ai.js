@@ -1,5 +1,7 @@
 // Optional: AI-written notes with Claude. Used only when ANTHROPIC_API_KEY is set.
 import Anthropic from '@anthropic-ai/sdk';
+import { expandTokens } from './math.js';
+import { attachMedia } from './summarize.js';
 
 const MODEL = process.env.STUDIFY_MODEL || 'claude-opus-5-5';
 let client = null;
@@ -22,10 +24,14 @@ Reply with a single JSON object and nothing else, using exactly this shape:
  "definitions": [{"term": string, "definition": string}] (up to 12),
  "keyTerms": string[] (up to 12),
  "flashcards": [{"q": string, "a": string}] (6-10),
- "analogy": string (one everyday analogy that explains the core idea)}`;
+ "formulas": [{"latex": string, "meaning": string, "symbols": [{"symbol": string, "meaning": string}]}] (the key formulas from the source, up to 8; [] if none),
+ "analogy": string (one everyday analogy that explains the core idea)}
+Formulas in the source appear as LaTeX between \\( \\) or \\[ \\]. Copy formulas exactly; never invent one.
+In any text field you may write inline math as \\(...\\). In "latex" and "symbol" write bare LaTeX without delimiters.`;
 
 export async function buildAiNotes(doc, { detail = 'normal' } = {}) {
-  const body = doc.sections.map(s => `## ${s.heading}\n${s.text}`).join('\n\n');
+  const math = doc.math || [];
+  const body = doc.sections.map(s => `## ${s.heading}\n${expandTokens(s.text, math).replace(/⟦m\d+⟧/g, '[formula]')}`).join('\n\n');
   const response = await getClient().beta.messages.create({
     model: MODEL,
     max_tokens: 16000,
@@ -43,7 +49,7 @@ export async function buildAiNotes(doc, { detail = 'normal' } = {}) {
   const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
   const n = JSON.parse(json);
   const words = body.split(/\s+/).length;
-  return {
+  return attachMedia({
     title: doc.title,
     tldr: String(n.tldr || ''),
     overview: arr(n.overview).map(String),
@@ -51,13 +57,18 @@ export async function buildAiNotes(doc, { detail = 'normal' } = {}) {
     definitions: arr(n.definitions).map(d => ({ term: String(d.term || ''), definition: String(d.definition || '') })),
     keyTerms: arr(n.keyTerms).map(String),
     flashcards: arr(n.flashcards).map(f => ({ q: String(f.q || ''), a: String(f.a || '') })),
+    formulas: arr(n.formulas).filter(f => f && f.latex).map(f => ({
+      latex: String(f.latex).replace(/^\\[[(]|\\[\])]$/g, '').trim(),
+      meaning: String(f.meaning || ''),
+      symbols: arr(f.symbols).map(x => ({ symbol: String(x.symbol || ''), meaning: String(x.meaning || '') })),
+    })),
     analogy: n.analogy ? String(n.analogy) : undefined,
     stats: { sourceWords: words, readingMinutes: Math.max(1, Math.round(words / 220)) },
     source: { name: doc.sourceName, url: doc.url, license: doc.license, authors: doc.authors },
     related: doc.related || [],
     notice: doc.notice,
     generatedBy: 'ai',
-  };
+  }, doc, detail);
 }
 
 const arr = v => (Array.isArray(v) ? v : []);
